@@ -266,6 +266,16 @@ class Task(evil):
 		"""
 		return ([cmd[0]], [self.quote_flag(x) for x in cmd[1:]])
 
+	def should_split(self, cmd):
+		"""return True if this command needs splitting for argument length"""
+		if isinstance(cmd, str):
+			return False
+		if Utils.is_win32 and len(repr(cmd)) >= 8192:
+			return True
+		if sys.platform.startswith("cygwin") and len(repr(cmd)) > 20000:
+			return True
+		return len(repr(cmd)) > 200000
+
 	def exec_command(self, cmd, **kw):
 		"""
 		Wrapper for :py:meth:`waflib.Context.Context.exec_command`.
@@ -302,15 +312,15 @@ class Task(evil):
 
 		# workaround for command line length limit:
 		# http://support.microsoft.com/kb/830473
-		if not isinstance(cmd, str) and (len(repr(cmd)) >= 8192 if Utils.is_win32 else len(cmd) > 200000):
+		if self.should_split(cmd):
 			cmd, args = self.split_argfile(cmd)
 			try:
 				(fd, tmp) = tempfile.mkstemp()
-				os.write(fd, '\r\n'.join(args).encode())
+				os.write(fd, '\r\n'.join(args[1:]).encode())
 				os.close(fd)
 				if Logs.verbose:
 					Logs.debug('argfile: @%r -> %r', tmp, args)
-				return self.generator.bld.exec_command(cmd + ['@' + tmp], **kw)
+				return self.generator.bld.exec_command(cmd + args[:1] + ['@' + tmp], **kw)
 			finally:
 				try:
 					os.remove(tmp)
